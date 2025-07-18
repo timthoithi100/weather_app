@@ -10,10 +10,12 @@ class WeatherUI(tk.Frame):
         super().__init__(master, bg="#F0F0F0")
         self.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         self.location_name = "Mombasa"
+        self.current_unit = "celsius" # Default unit
         self.tile_labels = {}
         self.daily_forecast_widgets = []
         self.search_city_var = StringVar(self)
         self.search_city_var.set(self.location_name)
+        self.unit_var = StringVar(self, value=self.current_unit) # To manage radiobutton selection
 
         self.weather_icon_map = {
             0: "0.png",
@@ -63,10 +65,8 @@ class WeatherUI(tk.Frame):
                 img = img.resize((50, 50), Image.Resampling.LANCZOS)
                 self.loaded_icons[code] = ImageTk.PhotoImage(img)
             except FileNotFoundError:
-                print(f"Warning: Icon file not found for code {code}: {filename}")
                 self.loaded_icons[code] = None
             except Exception as e:
-                print(f"Error loading icon {filename} for code {code}: {e}")
                 self.loaded_icons[code] = None
 
         try:
@@ -75,10 +75,8 @@ class WeatherUI(tk.Frame):
             default_img = default_img.resize((50, 50), Image.Resampling.LANCZOS)
             self.loaded_icons["default"] = ImageTk.PhotoImage(default_img)
         except FileNotFoundError:
-            print("CRITICAL: Default icon file not found: default.png. Icons may not display.")
             self.loaded_icons["default"] = None
         except Exception as e:
-            print(f"Error loading default icon: {e}")
             self.loaded_icons["default"] = None
 
     def get_icon_for_code(self, weather_code):
@@ -136,6 +134,12 @@ class WeatherUI(tk.Frame):
                                     padding=(5, 5))
         self.master.style.map("Search.TButton",
                               background=[('active', '#66BB6A')])
+        self.master.style.configure("Unit.TRadiobutton",
+                                    background="#F0F0F0",
+                                    foreground="#555555",
+                                    font=("Roboto", 10, "bold"))
+        self.master.style.map("Unit.TRadiobutton",
+                              background=[('active', '#F0F0F0')])
 
     def create_widgets(self):
         self.grid_columnconfigure(0, weight=1)
@@ -163,6 +167,7 @@ class WeatherUI(tk.Frame):
         self.header_frame.grid_rowconfigure(1, weight=1)
         self.header_frame.grid_columnconfigure(0, weight=1)
         self.header_frame.grid_columnconfigure(1, weight=0)
+        self.header_frame.grid_columnconfigure(2, weight=0) # For units toggle
 
         self.location_label = ttk.Label(self.header_frame, text="Loading Location...",
                                         font=("Roboto", 28, "bold"),
@@ -179,6 +184,17 @@ class WeatherUI(tk.Frame):
         self.current_weather_icon_label = ttk.Label(self.header_frame, background="#F0F0F0")
         self.current_weather_icon_label.grid(row=1, column=1, sticky="nw", padx=(0, 10), pady=(0,10))
 
+        # Units Toggle
+        self.unit_frame = ttk.Frame(self.header_frame, style="TFrame")
+        self.unit_frame.grid(row=1, column=2, sticky="ne", padx=(0,10), pady=(0,10))
+
+        self.celsius_radio = ttk.Radiobutton(self.unit_frame, text="°C", variable=self.unit_var, value="celsius",
+                                             command=self.toggle_units, style="Unit.TRadiobutton")
+        self.celsius_radio.pack(anchor="e")
+        self.fahrenheit_radio = ttk.Radiobutton(self.unit_frame, text="°F", variable=self.unit_var, value="fahrenheit",
+                                                command=self.toggle_units, style="Unit.TRadiobutton")
+        self.fahrenheit_radio.pack(anchor="e")
+        
         self.description_label = ttk.Label(self, text="Loading description...",
                                             font=("Roboto", 16),
                                             background="#F0F0F0",
@@ -218,25 +234,34 @@ class WeatherUI(tk.Frame):
         self.daily_forecast_widgets.clear()
 
     def set_loading_state(self):
-        # Changed "wait" to "watch"
         self.master.config(cursor="watch")
         self.location_label.config(text="Loading...")
-        self.current_temp_label.config(text="--°C")
+        self.current_temp_label.config(text="--°")
         self.description_label.config(text="Fetching weather data...")
         self.current_weather_icon_label.config(image=self.get_icon_for_code(None))
-        self.current_weather_icon_label.image = self.get_icon_for_code(None) # Maintain reference
+        self.current_weather_icon_label.image = self.get_icon_for_code(None)
         self.clear_daily_forecast()
         for key in self.tile_labels:
             self.tile_labels[key].config(text="--")
         self.search_button.config(state="disabled")
         self.search_entry.config(state="disabled")
-        self.update_idletasks() # Force UI update
+        self.celsius_radio.config(state="disabled")
+        self.fahrenheit_radio.config(state="disabled")
+        self.update_idletasks()
 
     def reset_ui_state(self):
-        # Changed "none" (default) to "" (empty string for default) or use a known default like "arrow"
-        self.master.config(cursor="") 
+        self.master.config(cursor="")
         self.search_button.config(state="enabled")
         self.search_entry.config(state="enabled")
+        self.celsius_radio.config(state="enabled")
+        self.fahrenheit_radio.config(state="enabled")
+
+    def toggle_units(self):
+        selected_unit = self.unit_var.get()
+        if self.current_unit != selected_unit:
+            self.current_unit = selected_unit
+            self.set_loading_state()
+            self.after(100, self.load_weather_data)
 
     def perform_search(self, event=None):
         search_term = self.search_city_var.get().strip()
@@ -252,13 +277,13 @@ class WeatherUI(tk.Frame):
         try:
             lat, lon, display_location = get_coordinates(self.location_name)
             if lat and lon:
-                weather_data, air_quality_data = get_weather_data(lat, lon, timezone="auto")
+                weather_data, air_quality_data = get_weather_data(lat, lon, timezone="auto", temperature_unit=self.current_unit)
                 if weather_data and air_quality_data:
                     parsed_data = parse_weather_data(weather_data, air_quality_data)
                     self.update_ui(parsed_data, display_location)
                 else:
                     self.description_label.config(text="Could not fetch weather data. API issue or no data.")
-                    self.current_temp_label.config(text="--°C")
+                    self.current_temp_label.config(text="--°")
                     self.current_weather_icon_label.config(image=self.get_icon_for_code(None))
                     self.current_weather_icon_label.image = self.get_icon_for_code(None)
                     self.clear_daily_forecast()
@@ -267,7 +292,7 @@ class WeatherUI(tk.Frame):
             else:
                 self.location_label.config(text=f"Location not found.")
                 self.description_label.config(text="Please check location name or try another.")
-                self.current_temp_label.config(text="--°C")
+                self.current_temp_label.config(text="--°")
                 self.current_weather_icon_label.config(image=self.get_icon_for_code(None))
                 self.current_weather_icon_label.image = self.get_icon_for_code(None)
                 self.clear_daily_forecast()
@@ -275,7 +300,7 @@ class WeatherUI(tk.Frame):
                     self.tile_labels[key].config(text="--")
         except Exception as e:
             self.description_label.config(text=f"An error occurred: {e}")
-            self.current_temp_label.config(text="--°C")
+            self.current_temp_label.config(text="--°")
             self.current_weather_icon_label.config(image=self.get_icon_for_code(None))
             self.current_weather_icon_label.image = self.get_icon_for_code(None)
             self.clear_daily_forecast()
@@ -289,8 +314,10 @@ class WeatherUI(tk.Frame):
         daily = parsed_data['daily']
         air_quality = parsed_data['air_quality']
 
+        unit_symbol = "°C" if self.current_unit == "celsius" else "°F"
+
         self.location_label.config(text=display_location.split(',')[0].strip())
-        self.current_temp_label.config(text=f"{current['temp']:.0f}°C")
+        self.current_temp_label.config(text=f"{current['temp']:.0f}{unit_symbol}")
         self.description_label.config(text=current['description'].capitalize())
 
         current_weather_code = current.get('weather_code')
@@ -307,8 +334,8 @@ class WeatherUI(tk.Frame):
             self.daily_forecast_container.grid_columnconfigure(i, weight=1)
             
             day_name = day['dt'].strftime('%a')
-            temp_max = f"{day['temp_max']:.0f}°" if day['temp_max'] is not None else "--"
-            temp_min = f"{day['temp_min']:.0f}°" if day['temp_min'] is not None else "--"
+            temp_max = f"{day['temp_max']:.0f}" if day['temp_max'] is not None else "--"
+            temp_min = f"{day['temp_min']:.0f}" if day['temp_min'] is not None else "--"
             description = day['description']
             
             daily_weather_code = day.get('weather_code')
@@ -319,14 +346,14 @@ class WeatherUI(tk.Frame):
             icon_label.pack()
 
             ttk.Label(day_frame, text=day_name, style="DailyDay.TLabel").pack()
-            ttk.Label(day_frame, text=f"{temp_max}/{temp_min}", style="DailyTemp.TLabel").pack()
+            ttk.Label(day_frame, text=f"{temp_max}{unit_symbol}/{temp_min}{unit_symbol}", style="DailyTemp.TLabel").pack()
             ttk.Label(day_frame, text=description, style="DailyDesc.TLabel", wraplength=70, justify=tk.CENTER).pack()
             
             self.daily_forecast_widgets.append(day_frame)
 
         self.tile_labels["rain_rate"].config(text=f"{current['rain_rate']:.1f} mm" if current['rain_rate'] is not None else "0.0 mm")
         self.tile_labels["humidity"].config(text=f"{current['humidity']:.0f}%" if current['humidity'] is not None else "--%")
-        self.tile_labels["current_temp_tile"].config(text=f"{current['feels_like']:.0f}°C" if current['feels_like'] is not None else "--°C")
+        self.tile_labels["current_temp_tile"].config(text=f"{current['feels_like']:.0f}{unit_symbol}" if current['feels_like'] is not None else "--°")
         self.tile_labels["uv_index"].config(text=f"{current['uvi']:.1f}" if current['uvi'] is not None else "--")
 
         if air_quality and air_quality.get('pm2_5') is not None:

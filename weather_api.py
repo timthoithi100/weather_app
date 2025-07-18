@@ -29,7 +29,7 @@ def get_coordinates(city_name):
         print(f"Error fetching coordinates: {e}")
         return None, None, None
 
-def get_weather_data(lat, lon, timezone="auto", daily_forecast_days=7):
+def get_weather_data(lat, lon, timezone="auto", daily_forecast_days=7, temperature_unit="celsius"):
     weather_params = {
         "latitude": lat,
         "longitude": lon,
@@ -37,7 +37,8 @@ def get_weather_data(lat, lon, timezone="auto", daily_forecast_days=7):
         "hourly": "temperature_2m,apparent_temperature,precipitation_probability,precipitation,rain,showers,snowfall,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index",
         "daily": "weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,sunrise,sunset,uv_index_max,precipitation_sum,precipitation_hours,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max",
         "timezone": timezone,
-        "forecast_days": daily_forecast_days + 1
+        "forecast_days": daily_forecast_days + 1,
+        "temperature_unit": temperature_unit
     }
     air_quality_params = {
         "latitude": lat,
